@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_ext.tools.mcp import SseServerParams, mcp_server_tools
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,8 +18,80 @@ CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Conte
 
 # Initialize AutoGen agent
 agent = None
+agent_with_tools = None
+
+# Tool display names for UI
+TOOL_DISPLAY_NAMES = {
+    'real-time-search': 'Real-time Web Search',
+    'stock-market-data': 'Stock Market Data',
+    'research-papers-search': 'Research Papers Search',
+    'benzinga': 'Benzinga Financial News',
+    'sports-news': 'Sports News',
+    'lifestyle-news': 'Lifestyle News',
+    'iheartdogs-ai': 'Dog Care Expert',
+    'iheartcats-ai': 'Cat Care Specialist',
+    'one-green-planet': 'Sustainability Guide',
+    'wish-tv-ai': 'WISH-TV News'
+}
+
+async def get_dappier_tools():
+    """Get tools from Dappier MCP server with error handling"""
+    try:
+        # Configure Dappier MCP server parameters
+        server_params = SseServerParams(
+            url="https://mcp.dappier.com/sse?apiKey=ak_01k194ztkcey3aq7b8k415k0zp"
+        )
+        
+        # Get available tools from the MCP server
+        tools = await mcp_server_tools(server_params)
+        print(f"Successfully loaded {len(tools)} tools from Dappier MCP server")
+        return tools
+    except Exception as e:
+        print(f"Warning: Could not connect to Dappier MCP server: {str(e)}")
+        print("Falling back to OpenAI-only responses")
+        return []
+
+async def get_autogen_agent_with_tools():
+    """Get AutoGen agent with Dappier MCP tools (async version)"""
+    global agent_with_tools
+    if agent_with_tools is None:
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        
+        # Create OpenAI model client for AutoGen
+        model_client = OpenAIChatCompletionClient(
+            model="gpt-4o",
+            api_key=api_key
+        )
+        
+        # Get Dappier MCP tools
+        dappier_tools = await get_dappier_tools()
+        
+        # Create AutoGen assistant agent with MCP tools using the proper configuration
+        if dappier_tools:
+            agent_with_tools = AssistantAgent(
+                name="chat_assistant",
+                model_client=model_client,
+                tools=dappier_tools,
+                reflect_on_tool_use=True,  # This is key - makes agent reflect on tool results
+                max_tool_iterations=10,    # Allow multiple tool calls and reasoning steps
+                model_client_stream=True,  # Enable token-level streaming
+                system_message="You are a helpful AI assistant with access to Dappier tools for enhanced information retrieval and analysis. When you use tools to get information, you MUST always process and summarize the results in a natural, conversational way. After calling any tool, you must provide a comprehensive response based on the tool's results. Never return raw tool data to users. Always analyze the information from tools and provide a helpful, well-formatted response that directly answers the user's question. Your response should be conversational and informative, making use of the data you retrieved through the tools."
+            )
+            print("Agent initialized with Dappier MCP tools (with reflection and streaming)")
+        else:
+            agent_with_tools = AssistantAgent(
+                name="chat_assistant",
+                model_client=model_client,
+                model_client_stream=True,  # Enable token-level streaming
+                system_message="You are a helpful AI assistant. Provide clear, concise, and helpful responses to user queries."
+            )
+            print("Agent initialized without MCP tools (fallback mode with streaming)")
+    return agent_with_tools
 
 def get_autogen_agent():
+    """Get basic AutoGen agent without MCP tools (sync version for compatibility)"""
     global agent
     if agent is None:
         api_key = os.getenv('OPENAI_API_KEY')
@@ -31,13 +104,14 @@ def get_autogen_agent():
             api_key=api_key
         )
         
-        # Create AutoGen assistant agent
+        # Create basic AutoGen assistant agent
         agent = AssistantAgent(
             name="chat_assistant",
             model_client=model_client,
             system_message="You are a helpful AI assistant. Provide clear, concise, and helpful responses to user queries.",
             model_client_stream=True  # Enable token-level streaming
         )
+        print("Basic agent initialized (will upgrade to MCP tools in async context)")
     return agent
 
 def build_conversation_context(current_message, messages_history=None):
@@ -121,8 +195,8 @@ def chat_completion():
 def generate_streaming_response(message, messages_history=None):
     """Generate streaming response using AutoGen agent with conversation history"""
     try:
-        # Get AutoGen agent
-        autogen_agent = get_autogen_agent()
+        # We'll get the agent with tools in the async context
+        autogen_agent = None
         
         # Build conversation context from history
         conversation_context = build_conversation_context(message, messages_history)
@@ -134,15 +208,47 @@ def generate_streaming_response(message, messages_history=None):
         try:
             # Define async function to stream messages
             async def stream_messages():
+                # Get agent with MCP tools in async context
+                nonlocal autogen_agent
+                autogen_agent = await get_autogen_agent_with_tools()
+                
                 async for chunk in autogen_agent.run_stream(task=conversation_context):
+                    # Handle tool call requests - inform UI which tool is being called
+                    if hasattr(chunk, 'type') and chunk.type == 'ToolCallRequestEvent':
+                        if hasattr(chunk, 'content') and chunk.content:
+                            # Extract tool name from the function call
+                            try:
+                                import re
+                                tool_match = re.search(r"name='([^']+)'", str(chunk.content))
+                                if tool_match:
+                                    tool_name = tool_match.group(1)
+                                    display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                    yield f"data: {json.dumps({'tool_name': tool_name, 'tool_display_name': display_name, 'type': 'tool_call', 'status': 'calling'})}\n\n"
+                            except:
+                                pass
+                    
+                    # Handle tool execution results - inform UI that tool finished
+                    elif hasattr(chunk, 'type') and chunk.type == 'ToolCallExecutionEvent':
+                        if hasattr(chunk, 'content') and chunk.content:
+                            # Extract tool name from the execution result
+                            try:
+                                import re
+                                tool_match = re.search(r"name='([^']+)'", str(chunk.content))
+                                if tool_match:
+                                    tool_name = tool_match.group(1)
+                                    display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                    yield f"data: {json.dumps({'tool_name': tool_name, 'tool_display_name': display_name, 'type': 'tool_call', 'status': 'completed'})}\n\n"
+                            except:
+                                pass
+                    
                     # Handle ModelClientStreamingChunkEvent for token-level streaming
-                    if hasattr(chunk, 'type') and chunk.type == 'ModelClientStreamingChunkEvent':
+                    elif hasattr(chunk, 'type') and chunk.type == 'ModelClientStreamingChunkEvent':
                         if hasattr(chunk, 'content') and chunk.content:
                             yield f"data: {json.dumps({'content': chunk.content, 'type': 'token'})}\n\n"
                     
                     # Handle TextMessage (complete messages)
                     elif hasattr(chunk, 'type') and chunk.type == 'TextMessage':
-                        if hasattr(chunk, 'source') and chunk.source == 'assistant':
+                        if hasattr(chunk, 'source') and chunk.source == 'chat_assistant':
                             if hasattr(chunk, 'content') and chunk.content:
                                 yield f"data: {json.dumps({'content': chunk.content, 'type': 'message'})}\n\n"
                     
@@ -151,11 +257,20 @@ def generate_streaming_response(message, messages_history=None):
                         # This is the final TaskResult - we can ignore it since we already streamed the content
                         pass
                     
-                    # Handle any other message types
+                    # Handle ToolCallSummaryMessage - but extract only the processed response
+                    elif hasattr(chunk, 'type') and chunk.type == 'ToolCallSummaryMessage':
+                        # This might contain the LLM's processed response after using tools
+                        # Let's check if there's useful content here
+                        if hasattr(chunk, 'content') and chunk.content:
+                            # For debugging - let's see what's in here
+                            print(f"DEBUG: ToolCallSummaryMessage content: {str(chunk.content)[:200]}...")
+                    
+                    # Handle any other chunk types for debugging
                     else:
-                        chunk_type = type(chunk).__name__
-                        if hasattr(chunk, 'content') and chunk.content and chunk.content != conversation_context:
-                            yield f"data: {json.dumps({'content': str(chunk.content), 'type': chunk_type})}\n\n"
+                        chunk_type = getattr(chunk, 'type', type(chunk).__name__)
+                        print(f"DEBUG: Unhandled chunk type: {chunk_type}")
+                        if hasattr(chunk, 'content') and chunk.content:
+                            print(f"DEBUG: Content preview: {str(chunk.content)[:100]}...")
             
             # Create async function to handle the streaming
             async def run_streaming():
@@ -182,8 +297,8 @@ def generate_streaming_response(message, messages_history=None):
 def generate_complete_response(message, messages_history=None):
     """Generate complete response using AutoGen agent with conversation history"""
     try:
-        # Get AutoGen agent
-        autogen_agent = get_autogen_agent()
+        # We'll get the agent with tools in the async context
+        autogen_agent = None
         
         # Build conversation context from history
         conversation_context = build_conversation_context(message, messages_history)
@@ -193,10 +308,14 @@ def generate_complete_response(message, messages_history=None):
         asyncio.set_event_loop(loop)
         
         try:
+            # Define async function to get agent and run
+            async def run_agent():
+                nonlocal autogen_agent
+                autogen_agent = await get_autogen_agent_with_tools()
+                return await autogen_agent.run(task=conversation_context)
+            
             # Run the agent
-            response = loop.run_until_complete(
-                autogen_agent.run(task=conversation_context)
-            )
+            response = loop.run_until_complete(run_agent())
             
             # Extract the response content
             if hasattr(response, 'messages') and response.messages:
