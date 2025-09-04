@@ -22,6 +22,7 @@ agent_with_tools = None
 
 # Tool display names for UI
 TOOL_DISPLAY_NAMES = {
+    # Dappier tools
     'real-time-search': 'Real-time Web Search',
     'stock-market-data': 'Stock Market Data',
     'research-papers-search': 'Research Papers Search',
@@ -31,7 +32,11 @@ TOOL_DISPLAY_NAMES = {
     'iheartdogs-ai': 'Dog Care Expert',
     'iheartcats-ai': 'Cat Care Specialist',
     'one-green-planet': 'Sustainability Guide',
-    'wish-tv-ai': 'WISH-TV News'
+    'wish-tv-ai': 'WISH-TV News',
+    # Skyfire tools
+    'find-seller': 'Find Data Seller',
+    'create-payment-token': 'Create Payment Token(KYA + PAY)',
+    'create-kya-token': 'Create KYA Token'
 }
 
 async def get_dappier_tools():
@@ -48,11 +53,33 @@ async def get_dappier_tools():
         return tools
     except Exception as e:
         print(f"Warning: Could not connect to Dappier MCP server: {str(e)}")
-        print("Falling back to OpenAI-only responses")
+        return []
+
+async def get_skyfire_tools():
+    """Get tools from Skyfire MCP server with error handling"""
+    try:
+        # Get Skyfire API key from environment
+        skyfire_api_key = os.getenv('SKYFIRE_API_KEY')
+        if not skyfire_api_key:
+            print("Warning: SKYFIRE_API_KEY environment variable not found, skipping Skyfire tools")
+            return []
+        
+        # Configure Skyfire MCP server parameters
+        server_params = SseServerParams(
+            url="http://localhost:8788/sse",
+            headers={"skyfire-api-key": skyfire_api_key}
+        )
+        
+        # Get available tools from the MCP server
+        tools = await mcp_server_tools(server_params)
+        print(f"Successfully loaded {len(tools)} tools from Skyfire MCP server")
+        return tools
+    except Exception as e:
+        print(f"Warning: Could not connect to Skyfire MCP server: {str(e)}")
         return []
 
 async def get_autogen_agent_with_tools():
-    """Get AutoGen agent with Dappier MCP tools (async version)"""
+    """Get AutoGen agent with Dappier and Skyfire MCP tools (async version)"""
     global agent_with_tools
     if agent_with_tools is None:
         api_key = os.getenv('OPENAI_API_KEY')
@@ -65,21 +92,43 @@ async def get_autogen_agent_with_tools():
             api_key=api_key
         )
         
-        # Get Dappier MCP tools
+        # Get tools from both MCP servers
         dappier_tools = await get_dappier_tools()
+        skyfire_tools = await get_skyfire_tools()
+        
+        # Log tool details
+        if dappier_tools:
+            print(f"🔧 Dappier tools loaded: {[getattr(tool, 'name', str(tool)[:30]) for tool in dappier_tools]}")
+        if skyfire_tools:
+            print(f"🔧 Skyfire tools loaded: {[getattr(tool, 'name', str(tool)[:30]) for tool in skyfire_tools]}")
+        
+        # Combine all tools
+        all_tools = []
+        if dappier_tools:
+            all_tools.extend(dappier_tools)
+        if skyfire_tools:
+            all_tools.extend(skyfire_tools)
+        
+        print(f"🛠️ Total tools available: {len(all_tools)}")
         
         # Create AutoGen assistant agent with MCP tools using the proper configuration
-        if dappier_tools:
+        if all_tools:
+            tool_sources = []
+            if dappier_tools:
+                tool_sources.append(f"Dappier ({len(dappier_tools)} tools)")
+            if skyfire_tools:
+                tool_sources.append(f"Skyfire ({len(skyfire_tools)} tools)")
+            
             agent_with_tools = AssistantAgent(
                 name="chat_assistant",
                 model_client=model_client,
-                tools=dappier_tools,
+                tools=all_tools,
                 reflect_on_tool_use=True,  # This is key - makes agent reflect on tool results
                 max_tool_iterations=10,    # Allow multiple tool calls and reasoning steps
                 model_client_stream=True,  # Enable token-level streaming
-                system_message="You are a helpful AI assistant with access to Dappier tools for enhanced information retrieval and analysis. When you use tools to get information, you MUST always process and summarize the results in a natural, conversational way. After calling any tool, you must provide a comprehensive response based on the tool's results. Never return raw tool data to users. Always analyze the information from tools and provide a helpful, well-formatted response that directly answers the user's question. Your response should be conversational and informative, making use of the data you retrieved through the tools."
+                system_message="You are a helpful AI assistant with access to both Dappier and Skyfire tools for enhanced information retrieval and analysis. When you use tools to get information, you MUST always process and summarize the results in a natural, conversational way. After calling any tool, you must provide a comprehensive response based on the tool's results. Never return raw tool data to users. Always analyze the information from tools and provide a helpful, well-formatted response that directly answers the user's question. Your response should be conversational and informative, making use of the data you retrieved through the tools."
             )
-            print("Agent initialized with Dappier MCP tools (with reflection and streaming)")
+            print(f"Agent initialized with MCP tools from: {', '.join(tool_sources)} (with reflection and streaming)")
         else:
             agent_with_tools = AssistantAgent(
                 name="chat_assistant",
@@ -145,9 +194,13 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy", 
-        "service": "Flask AutoGen API",
+        "service": "Flask AutoGen API with Dappier & Skyfire MCP Integration",
         "framework": "Microsoft AutoGen",
-        "model": "gpt-4o"
+        "model": "gpt-4o",
+        "mcp_servers": {
+            "dappier": "https://mcp.dappier.com/sse",
+            "skyfire": "http://localhost:8788/sse"
+        }
     })
 
 @app.route('/chat', methods=['POST'])
@@ -210,12 +263,18 @@ def generate_streaming_response(message, messages_history=None):
             async def stream_messages():
                 # Get agent with MCP tools in async context
                 nonlocal autogen_agent
+                print(f"🤖 Initializing agent for conversation...")
                 autogen_agent = await get_autogen_agent_with_tools()
+                print(f"📝 Processing message: {message[:100]}{'...' if len(message) > 100 else ''}")
+                print(f"💬 Conversation context length: {len(conversation_context)} characters")
                 
                 async for chunk in autogen_agent.run_stream(task=conversation_context):
                     # Handle tool call requests - inform UI which tool is being called
                     if hasattr(chunk, 'type') and chunk.type == 'ToolCallRequestEvent':
                         if hasattr(chunk, 'content') and chunk.content:
+                            # Log the full tool call request
+                            print(f"🔧 TOOL CALL REQUEST: {chunk.content}")
+                            
                             # Extract tool name from the function call
                             try:
                                 import re
@@ -223,13 +282,17 @@ def generate_streaming_response(message, messages_history=None):
                                 if tool_match:
                                     tool_name = tool_match.group(1)
                                     display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                    print(f"🚀 Calling tool: {tool_name} ({display_name})")
                                     yield f"data: {json.dumps({'tool_name': tool_name, 'tool_display_name': display_name, 'type': 'tool_call', 'status': 'calling'})}\n\n"
-                            except:
-                                pass
+                            except Exception as e:
+                                print(f"❌ Error parsing tool call request: {e}")
                     
                     # Handle tool execution results - inform UI that tool finished
                     elif hasattr(chunk, 'type') and chunk.type == 'ToolCallExecutionEvent':
                         if hasattr(chunk, 'content') and chunk.content:
+                            # Log the full tool execution result
+                            print(f"✅ TOOL EXECUTION RESULT: {chunk.content}")
+                            
                             # Extract tool name from the execution result
                             try:
                                 import re
@@ -237,9 +300,10 @@ def generate_streaming_response(message, messages_history=None):
                                 if tool_match:
                                     tool_name = tool_match.group(1)
                                     display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                    print(f"✨ Tool completed: {tool_name} ({display_name})")
                                     yield f"data: {json.dumps({'tool_name': tool_name, 'tool_display_name': display_name, 'type': 'tool_call', 'status': 'completed'})}\n\n"
-                            except:
-                                pass
+                            except Exception as e:
+                                print(f"❌ Error parsing tool execution result: {e}")
                     
                     # Handle ModelClientStreamingChunkEvent for token-level streaming
                     elif hasattr(chunk, 'type') and chunk.type == 'ModelClientStreamingChunkEvent':
@@ -248,29 +312,35 @@ def generate_streaming_response(message, messages_history=None):
                     
                     # Handle TextMessage (complete messages)
                     elif hasattr(chunk, 'type') and chunk.type == 'TextMessage':
+                        print(f"📨 TEXT MESSAGE from {getattr(chunk, 'source', 'unknown')}: {getattr(chunk, 'content', '')[:100]}{'...' if len(str(getattr(chunk, 'content', ''))) > 100 else ''}")
                         if hasattr(chunk, 'source') and chunk.source == 'chat_assistant':
                             if hasattr(chunk, 'content') and chunk.content:
                                 yield f"data: {json.dumps({'content': chunk.content, 'type': 'message'})}\n\n"
                     
                     # Handle TaskResult (final result)
                     elif hasattr(chunk, 'messages'):
+                        print(f"🏁 TASK RESULT: {len(chunk.messages)} messages")
                         # This is the final TaskResult - we can ignore it since we already streamed the content
                         pass
                     
                     # Handle ToolCallSummaryMessage - but extract only the processed response
                     elif hasattr(chunk, 'type') and chunk.type == 'ToolCallSummaryMessage':
+                        print(f"📋 TOOL CALL SUMMARY: {str(chunk.content)[:200]}{'...' if len(str(chunk.content)) > 200 else ''}")
                         # This might contain the LLM's processed response after using tools
                         # Let's check if there's useful content here
                         if hasattr(chunk, 'content') and chunk.content:
                             # For debugging - let's see what's in here
-                            print(f"DEBUG: ToolCallSummaryMessage content: {str(chunk.content)[:200]}...")
+                            print(f"🔍 ToolCallSummaryMessage content: {str(chunk.content)[:200]}...")
                     
                     # Handle any other chunk types for debugging
                     else:
                         chunk_type = getattr(chunk, 'type', type(chunk).__name__)
-                        print(f"DEBUG: Unhandled chunk type: {chunk_type}")
+                        print(f"🔍 UNHANDLED CHUNK: {chunk_type}")
                         if hasattr(chunk, 'content') and chunk.content:
-                            print(f"DEBUG: Content preview: {str(chunk.content)[:100]}...")
+                            print(f"📄 Content preview: {str(chunk.content)[:100]}...")
+                        # Print all attributes for debugging
+                        attrs = [attr for attr in dir(chunk) if not attr.startswith('_')]
+                        print(f"🔧 Available attributes: {attrs[:10]}{'...' if len(attrs) > 10 else ''}")
             
             # Create async function to handle the streaming
             async def run_streaming():
@@ -311,8 +381,13 @@ def generate_complete_response(message, messages_history=None):
             # Define async function to get agent and run
             async def run_agent():
                 nonlocal autogen_agent
+                print(f"🤖 Initializing agent for non-streaming response...")
                 autogen_agent = await get_autogen_agent_with_tools()
-                return await autogen_agent.run(task=conversation_context)
+                print(f"📝 Processing message (non-streaming): {message[:100]}{'...' if len(message) > 100 else ''}")
+                print(f"💬 Conversation context length: {len(conversation_context)} characters")
+                result = await autogen_agent.run(task=conversation_context)
+                print(f"✅ Non-streaming response completed")
+                return result
             
             # Run the agent
             response = loop.run_until_complete(run_agent())
@@ -347,4 +422,12 @@ def generate_complete_response(message, messages_history=None):
 
 
 if __name__ == '__main__':
+    print("🚀 Starting Flask AutoGen API with Dappier & Skyfire MCP Integration")
+    print("🔧 Available MCP Servers:")
+    print("   - Dappier: https://mcp.dappier.com/sse")
+    print("   - Skyfire: http://localhost:8788/sse")
+    print("📡 Server will be available at: http://localhost:5000")
+    print("🏥 Health check: http://localhost:5000/health")
+    print("💬 Chat endpoint: http://localhost:5000/chat")
+    print("=" * 60)
     app.run(host='0.0.0.0', port=5000, debug=True)
