@@ -714,8 +714,6 @@ def generate_streaming_response(message, messages_history=None, session_id=None)
             async def stream_messages():
                 # Use the session-specific agent
                 async for chunk in session_agent.run_stream(task=conversation_context):
-                    if hasattr(chunk, 'type') and chunk.type != 'ModelClientStreamingChunkEvent':
-                        print(chunk)
                     # Handle tool call requests - inform UI which tool is being called
                     if hasattr(chunk, 'type') and chunk.type == 'ToolCallRequestEvent':
                         if hasattr(chunk, 'content'):
