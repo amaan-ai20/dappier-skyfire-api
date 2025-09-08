@@ -21,6 +21,14 @@ CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Conte
 # Session-based agent management
 session_agents = {}  # Dictionary to store session-specific agents
 session_metadata = {}  # Store session metadata
+
+# Global tool cache to avoid duplicate initialization
+cached_tools = {
+    "dappier": [],
+    "skyfire": [],
+    "all_tools": []
+}
+
 initialization_status = {
     "initialized": False,
     "initializing": False,
@@ -62,6 +70,15 @@ TOOL_DISPLAY_NAMES = {
 def generate_session_id():
     """Generate a unique session ID"""
     return f"sess_{uuid.uuid4().hex[:16]}"
+
+def clear_tool_cache():
+    """Clear the cached tools (useful for re-initialization)"""
+    global cached_tools
+    cached_tools = {
+        "dappier": [],
+        "skyfire": [],
+        "all_tools": []
+    }
 
 async def get_dappier_tools():
     """Get tools from Dappier MCP server with error handling"""
@@ -174,7 +191,7 @@ async def get_skyfire_tools():
 
 async def initialize_mcp_connections():
     """Initialize MCP server connections (tools will be used for session agents)"""
-    global initialization_status
+    global initialization_status, cached_tools
     
     try:
         initialization_status["initializing"] = True
@@ -190,13 +207,20 @@ async def initialize_mcp_connections():
         dappier_tools = await get_dappier_tools()
         skyfire_tools = await get_skyfire_tools()
         
-        # Count total available tools
-        total_tools = 0
-        if dappier_tools:
-            total_tools += len(dappier_tools)
-        if skyfire_tools:
-            total_tools += len(skyfire_tools)
+        # Cache the tools for reuse in session agents
+        cached_tools["dappier"] = dappier_tools if dappier_tools else []
+        cached_tools["skyfire"] = skyfire_tools if skyfire_tools else []
         
+        # Combine all tools for easy access
+        all_tools = []
+        if dappier_tools:
+            all_tools.extend(dappier_tools)
+        if skyfire_tools:
+            all_tools.extend(skyfire_tools)
+        cached_tools["all_tools"] = all_tools
+        
+        # Count total available tools
+        total_tools = len(all_tools)
         initialization_status["total_tools"] = total_tools
         
         # Mark initialization as complete
@@ -218,6 +242,8 @@ async def initialize_mcp_connections():
 
 async def create_session_agent():
     """Create a new agent instance for a session"""
+    global cached_tools
+    
     try:
         # Check for OpenAI API key
         api_key = os.getenv('OPENAI_API_KEY')
@@ -230,16 +256,8 @@ async def create_session_agent():
             api_key=api_key
         )
         
-        # Get tools from both MCP servers (reuse existing connections if available)
-        dappier_tools = await get_dappier_tools()
-        skyfire_tools = await get_skyfire_tools()
-        
-        # Combine all tools
-        all_tools = []
-        if dappier_tools:
-            all_tools.extend(dappier_tools)
-        if skyfire_tools:
-            all_tools.extend(skyfire_tools)
+        # Use cached tools to avoid duplicate initialization
+        all_tools = cached_tools["all_tools"]
         
         # Create AutoGen assistant agent with MCP tools
         if all_tools:
@@ -432,6 +450,9 @@ def initialize():
     try:
         # Initialize MCP connections if not already done
         if not initialization_status["initialized"] and not initialization_status["initializing"]:
+            # Clear cached tools for fresh initialization
+            clear_tool_cache()
+            
             # Reset status for fresh initialization
             initialization_status = {
                 "initialized": False,
