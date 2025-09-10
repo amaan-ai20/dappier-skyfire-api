@@ -1,77 +1,50 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Import services
-from services.session_service import SessionService
-from services.mcp_service import MCPService
-from services.chat_service import ChatService
-
-# Import route blueprints
-from routes.chat_routes import chat_bp, init_chat_routes
-from routes.session_routes import session_bp, init_session_routes
-from routes.health_routes import health_bp, init_health_routes
-
-# Import configuration
-from config.config import API_CONFIG, CORS_CONFIG, APP_INFO
+# Import blueprints
+from sessions import sessions_bp
+from initialize import initialize_bp
+from chat import chat_bp
 
 # Load environment variables
 load_dotenv()
 
+app = Flask(__name__)
 
-def create_app():
-    """Create and configure the Flask application"""
-    app = Flask(__name__)
-    
-    # Enable CORS for all routes and origins
-    CORS(app, **CORS_CONFIG)
-    
-    # Initialize services
-    session_manager = SessionService()
-    mcp_client = MCPService()
-    chat_service = ChatService(session_manager, mcp_client)
-    
-    # Initialize route blueprints with services
-    init_chat_routes(chat_service, session_manager, mcp_client)
-    init_session_routes(chat_service, session_manager, mcp_client)
-    init_health_routes(session_manager, mcp_client)
-    
-    # Register blueprints
-    app.register_blueprint(chat_bp)
-    app.register_blueprint(session_bp)
-    app.register_blueprint(health_bp)
-    
-    return app
+# Enable CORS for all routes and origins
+CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
 
+# Register blueprints
+app.register_blueprint(sessions_bp)
+app.register_blueprint(initialize_bp)
+app.register_blueprint(chat_bp)
 
-def main():
-    """Main entry point for the application"""
-    app = create_app()
-    
-    print(f"Starting {APP_INFO['name']}")
-    print(f"Framework: {APP_INFO['framework']}")
-    print(f"Version: {APP_INFO['version']}")
-    print(f"Server will be available at: http://{API_CONFIG['host']}:{API_CONFIG['port']}")
-    print("\nAvailable endpoints:")
-    print("  POST /initialize - Initialize MCP connections and create first session")
-    print("  POST /sessions/new - Create a new session")
-    print("  POST /chat - Send chat messages (requires session_id)")
-    print("  GET /sessions - List all active sessions")
-    print("  GET /sessions/<id> - Get specific session info")
-    print("  DELETE /sessions/<id> - Delete a specific session")
-    print("  POST /sessions/cleanup - Clean up expired sessions")
-    print("  GET /sessions/stats - Get session statistics")
-    print("  GET /status - Get initialization status")
-    print("  GET /health - Health check")
-    print("  GET /info - System information")
-    print("  GET /tools - Available tools information")
-    
-    app.run(
-        host=API_CONFIG["host"],
-        port=API_CONFIG["port"],
-        debug=API_CONFIG["debug"]
-    )
-
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy", 
+        "service": "Flask AutoGen API with Dappier & Skyfire MCP Integration",
+        "framework": "Microsoft AutoGen",
+        "model": "gpt-4o",
+        "mcp_servers": {
+            "dappier": "https://mcp.dappier.com/mcp",
+            "skyfire": "https://mcp.skyfire.xyz/mcp"
+        },
+        "endpoints": {
+            "health": "/health (GET)",
+            "initialize": "/initialize (POST)",
+            "status": "/status (GET)",
+            "chat": "/chat (POST)",
+            "session_new": "/sessions/new (POST)",
+            "session_list": "/sessions (GET)",
+            "session_delete": "/sessions/<session_id> (DELETE)",
+            "session_cleanup": "/sessions/cleanup (POST)"
+        }
+    })
 
 if __name__ == '__main__':
-    main()
+    print("Starting Flask AutoGen API with Dappier & Skyfire MCP Integration")
+    print("Server will be available at: http://localhost:5000")
+    app.run(host='0.0.0.0', port=5000, debug=True)
