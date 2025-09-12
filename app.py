@@ -6,6 +6,9 @@ from datetime import datetime
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import Swarm
+from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.base import Handoff
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_ext.tools.mcp import StreamableHttpServerParams, mcp_server_tools
 from dotenv import load_dotenv
@@ -18,8 +21,8 @@ app = Flask(__name__)
 # Enable CORS for all routes and origins
 CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
 
-# Session-based agent management
-session_agents = {}  # Dictionary to store session-specific agents
+# Session-based swarm management
+session_swarms = {}  # Dictionary to store session-specific swarms
 session_metadata = {}  # Store session metadata
 
 # Global tool cache to avoid duplicate initialization
@@ -41,9 +44,9 @@ initialization_status = {
 
 # Session management configuration
 SESSION_CONFIG = {
-    "max_sessions": 100,  # Maximum number of concurrent sessions
-    "session_timeout": 3600,  # Session timeout in seconds (1 hour)
-    "cleanup_interval": 300  # Cleanup interval in seconds (5 minutes)
+    "max_sessions": 100,
+    "session_timeout": 3600,
+    "cleanup_interval": 300
 }
 
 # Tool display names for UI
@@ -79,6 +82,13 @@ def clear_tool_cache():
         "skyfire": [],
         "all_tools": []
     }
+
+def clear_session_cache():
+    """Clear all cached sessions to force recreation with updated configuration"""
+    global session_swarms, session_metadata
+    session_swarms.clear()
+    session_metadata.clear()
+    print("Cleared all session caches - new sessions will use updated configuration")
 
 async def get_dappier_tools():
     """Get tools from Dappier MCP server with error handling"""
@@ -240,8 +250,8 @@ async def initialize_mcp_connections():
         print(f"Failed to initialize MCP connections: {error_msg}")
         return False
 
-async def create_session_agent():
-    """Create a new agent instance for a session"""
+async def create_session_swarm():
+    """Create a new Swarm instance for a session"""
     global cached_tools
     
     try:
@@ -253,40 +263,137 @@ async def create_session_agent():
         # Create OpenAI model client for AutoGen
         model_client = OpenAIChatCompletionClient(
             model="gpt-4o",
-            api_key=api_key
+            api_key=api_key,
+            parallel_tool_calls=False,  # Disable parallel tool calls to avoid multiple handoffs
+            temperature=0.0  # Deterministic behavior for consistent agent responses
         )
         
-        # Use cached tools to avoid duplicate initialization
-        all_tools = cached_tools["all_tools"]
+        # Get cached tools
+        dappier_tools = cached_tools["dappier"]
+        skyfire_tools = cached_tools["skyfire"]
         
-        # Create AutoGen assistant agent with MCP tools
-        if all_tools:
-            session_agent = AssistantAgent(
-                name="chat_assistant",
-                model_client=model_client,
-                tools=all_tools,
-                reflect_on_tool_use=True,
-                max_tool_iterations=10,
-                model_client_stream=True,
-                system_message="You are a helpful AI assistant with access to both Dappier and Skyfire tools for enhanced information retrieval and analysis. When you use tools to get information, you MUST always process and summarize the results in a natural, conversational way. After calling any tool, you must provide a comprehensive response based on the tool's results. Never return raw tool data to users. Always analyze the information from tools and provide a helpful, well-formatted response that directly answers the user's question. Your response should be conversational and informative, making use of the data you retrieved through the tools."
-            )
-        else:
-            session_agent = AssistantAgent(
-                name="chat_assistant",
-                model_client=model_client,
-                model_client_stream=True,
-                system_message="You are a helpful AI assistant. Provide clear, concise, and helpful responses to user queries."
-            )
+        # Create the Planning Agent (orchestrator)
+        planning_agent = AssistantAgent(
+            name="planning_agent",
+            model_client=model_client,
+            handoffs=[
+                Handoff(target="dappier_agent", description="Handoff to Dappier agent for real-time search, news, research papers, or content queries"),
+                Handoff(target="skyfire_agent", description="Handoff to Skyfire agent for network operations, token creation, or payment processing or finding sellers on skyfire.")
+            ],
+            reflect_on_tool_use=True,
+            max_tool_iterations=10,
+            system_message="""You are the Planning Agent - the orchestrator of this team and general assistant.
+            
+Your role is to:
+1. Analyze incoming requests and determine which specialized agent should handle them
+2. Delegate tasks to the appropriate agent based on their capabilities
+3. Handle general questions and assistance that don't require specialized tools
+4. Ensure smooth coordination between agents
+
+Available specialized agents and their capabilities:
+- **Dappier Agent**: Handles real-time search, news (financial, sports, lifestyle), research papers, and specialized content (pets, sustainability)
+- **Skyfire Agent**: Manages network operations, token creation (KYA, PAY), and payment processing
+
+IMPORTANT WORKFLOW:
+- For requests requiring specialized tools: delegate to the appropriate agent
+- For general questions: handle them directly
+- When an agent hands back to you after completing a task: 
+  * If they provided clear output, acknowledge it and use TERMINATE
+  * If they didn't provide output, ask them to explain what they accomplished before terminating
+- When you complete a task directly: use TERMINATE immediately after your response
+- NEVER continue the conversation unnecessarily - always end with TERMINATE when the user's request is fulfilled
+- Ensure the user always receives meaningful output about what was accomplished
+
+Use TERMINATE when the task is complete."""
+        )
         
-        return session_agent
+        # Create the Dappier Agent with Dappier tools
+        dappier_agent = AssistantAgent(
+            name="dappier_agent",
+            model_client=model_client,
+            tools=dappier_tools if dappier_tools else [],
+            handoffs=[
+                Handoff(target="planning_agent", description="Return to Planning agent after completing task")
+            ],
+            reflect_on_tool_use=True,
+            max_tool_iterations=10,
+            system_message="""You are the Dappier Agent - specialized in real-time information retrieval.
+
+Your capabilities include:
+- Real-time web search for latest news, weather, deals
+- Stock market data and financial news
+- Research papers from arXiv
+- News from various sources (Benzinga, sports, lifestyle, WISH-TV)
+- Specialized content (iHeartDogs, iHeartCats, One Green Planet)
+
+CRITICAL WORKFLOW - Follow these steps in order:
+1. Use the appropriate tool to gather the requested information
+2. ALWAYS analyze and process the tool results
+3. ALWAYS provide a comprehensive, well-formatted response message with the information gathered
+4. ONLY AFTER providing your response message, hand off back to the planning_agent
+
+IMPORTANT RULES:
+- Never return raw tool data - always analyze and provide helpful, well-formatted responses
+- You MUST provide a response message before any handoff
+- Do NOT continue the conversation or ask follow-up questions after your response
+- You can ONLY handoff back to the planning_agent. Do not attempt to handoff to other agents.
+- If a tool call fails, explain what went wrong and suggest alternatives before handing back"""
+        )
+        
+        # Create the Skyfire Agent with Skyfire tools
+        skyfire_agent = AssistantAgent(
+            name="skyfire_agent",
+            model_client=model_client,
+            tools=skyfire_tools if skyfire_tools else [],
+            handoffs=[
+                Handoff(target="planning_agent", description="Return to Planning agent after completing task")
+            ],
+            reflect_on_tool_use=True,
+            max_tool_iterations=10,
+            system_message="""You are the Skyfire Agent - specialized in network operations and token management.
+
+Your capabilities include:
+- Finding sellers on the Skyfire network
+- Creating KYA (Know Your Agent) tokens for authentication
+- Creating PAY tokens for transactions (deducts from wallet)
+- Creating combined KYA+PAY tokens
+- Getting current date/time information
+
+CRITICAL WORKFLOW - Follow these steps in order:
+1. Use the appropriate tools to complete the requested operations
+2. ALWAYS analyze and process the tool results carefully
+3. ALWAYS provide a comprehensive, well-formatted response message with the results
+4. ONLY AFTER providing your response message, hand off back to the planning_agent
+
+IMPORTANT RULES:
+- Seller Service ID is equal to ID. Never ever use Seller.Id, use Id.
+- Handle all token and payment operations carefully (PAY tokens deduct money from wallets)
+- You MUST provide a detailed response message before any handoff
+- Include specific details: token IDs, seller information, timestamps, etc.
+- Explain clearly what was accomplished and any important information
+- Do NOT continue the conversation or ask follow-up questions after your response
+- You can ONLY handoff back to the planning_agent. Do not attempt to handoff to other agents.
+- If a tool call fails, explain what went wrong and suggest alternatives before handing back"""
+        )
+        
+        # Create termination condition
+        termination = TextMentionTermination("TERMINATE")
+        
+        # Create the Swarm team
+        swarm = Swarm(
+            participants=[planning_agent, dappier_agent, skyfire_agent],
+            termination_condition=termination
+        )
+        
+        return swarm
         
     except Exception as e:
-        print(f"Failed to create session agent: {str(e)}")
+        print(f"Failed to create session swarm: {str(e)}")
         raise
 
 def cleanup_expired_sessions():
     """Clean up expired sessions"""
-    global session_agents, session_metadata
+    global session_swarms, session_metadata
     current_time = datetime.now().timestamp()
     
     expired_sessions = []
@@ -295,27 +402,68 @@ def cleanup_expired_sessions():
             expired_sessions.append(session_id)
     
     for session_id in expired_sessions:
-        if session_id in session_agents:
-            del session_agents[session_id]
+        if session_id in session_swarms:
+            del session_swarms[session_id]
         if session_id in session_metadata:
             del session_metadata[session_id]
         print(f"Cleaned up expired session: {session_id}")
     
     return len(expired_sessions)
 
-async def get_or_create_session_agent(session_id):
-    """Get existing session agent or create a new one"""
-    global session_agents, session_metadata
+async def create_new_session_swarm(session_id):
+    """Always create a new session swarm (used by initialize endpoint)"""
+    global session_swarms, session_metadata
+    
+    # Clean up expired sessions periodically
+    cleanup_expired_sessions()
+    
+    # Check if global initialization is complete
+    if not initialization_status["initialized"]:
+        raise ValueError("System not initialized. Please call /initialize endpoint first.")
+    
+    # Remove any existing session with this ID (safety measure)
+    if session_id in session_swarms:
+        del session_swarms[session_id]
+    if session_id in session_metadata:
+        del session_metadata[session_id]
+    
+    # Check if we've reached the maximum number of sessions
+    if len(session_swarms) >= SESSION_CONFIG['max_sessions']:
+        # Remove the oldest session
+        oldest_session = min(session_metadata.keys(), key=lambda k: session_metadata[k]['last_activity'])
+        if oldest_session in session_swarms:
+            del session_swarms[oldest_session]
+        if oldest_session in session_metadata:
+            del session_metadata[oldest_session]
+        print(f"Removed oldest session to make room: {oldest_session}")
+    
+    # Create new session metadata
+    current_time = datetime.now().timestamp()
+    session_metadata[session_id] = {
+        'created_at': current_time,
+        'last_activity': current_time,
+        'message_count': 0
+    }
+    
+    # Always create a new session swarm
+    print(f"Creating new session swarm for session: {session_id}")
+    session_swarms[session_id] = await create_session_swarm()
+    
+    return session_swarms[session_id]
+
+async def get_or_create_session_swarm(session_id):
+    """Get existing session swarm or create a new one"""
+    global session_swarms, session_metadata
     
     # Clean up expired sessions periodically
     cleanup_expired_sessions()
     
     # Check if we've reached the maximum number of sessions
-    if len(session_agents) >= SESSION_CONFIG['max_sessions'] and session_id not in session_agents:
+    if len(session_swarms) >= SESSION_CONFIG['max_sessions'] and session_id not in session_swarms:
         # Remove the oldest session
         oldest_session = min(session_metadata.keys(), key=lambda k: session_metadata[k]['last_activity'])
-        if oldest_session in session_agents:
-            del session_agents[oldest_session]
+        if oldest_session in session_swarms:
+            del session_swarms[oldest_session]
         if oldest_session in session_metadata:
             del session_metadata[oldest_session]
         print(f"Removed oldest session to make room: {oldest_session}")
@@ -332,16 +480,16 @@ async def get_or_create_session_agent(session_id):
         session_metadata[session_id]['last_activity'] = current_time
         session_metadata[session_id]['message_count'] += 1
     
-    # Get or create session agent
-    if session_id not in session_agents:
+    # Get or create session swarm
+    if session_id not in session_swarms:
         # Check if global initialization is complete
         if not initialization_status["initialized"]:
             raise ValueError("System not initialized. Please call /initialize endpoint first.")
         
-        print(f"Creating new session agent for session: {session_id}")
-        session_agents[session_id] = await create_session_agent()
+        print(f"Creating new session swarm for session: {session_id}")
+        session_swarms[session_id] = await create_session_swarm()
     
-    return session_agents[session_id]
+    return session_swarms[session_id]
 
 def _iter_items(content):
     """Normalize content to a list for iteration"""
@@ -400,12 +548,20 @@ def build_conversation_context(current_message, messages_history=None):
     # Add conversation history
     context_parts.append("Previous conversation:")
     for msg in messages_history:
-        role = msg.get('role', msg.get('type', 'user'))  # Support both 'role' and 'type' fields
+        role = msg.get('role', 'user')
         content = msg.get('content', '')
+        
+        # Skip empty content messages (like handoff messages with empty content)
+        if not content or content.strip() == "":
+            continue
+            
+        # Skip transfer/handoff messages that are just internal coordination
+        if content.startswith("Transferring from") and "to" in content:
+            continue
         
         if role == 'user':
             context_parts.append(f"User: {content}")
-        elif role in ['assistant', 'ai']:
+        elif role == 'assistant':
             context_parts.append(f"Assistant: {content}")
     
     # Add current message
@@ -419,18 +575,19 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy", 
-        "service": "Flask AutoGen API with Dappier & Skyfire MCP Integration",
-        "framework": "Microsoft AutoGen",
+        "service": "Flask AutoGen Swarm API with Dappier & Skyfire MCP Integration",
+        "framework": "Microsoft AutoGen with Swarm Pattern",
         "model": "gpt-4o",
+        "architecture": "Swarm with Planning, Dappier, Skyfire, and General agents",
         "session_management": {
             "enabled": True,
-            "active_sessions": len(session_agents),
+            "active_sessions": len(session_swarms),
             "max_sessions": SESSION_CONFIG['max_sessions'],
             "session_timeout": SESSION_CONFIG['session_timeout']
         },
         "mcp_servers": {
-            "dappier": "https://mcp.dappier.com/sse",
-            "skyfire": "https://mcp.skyfire.xyz/sse"
+            "dappier": "https://mcp.dappier.com/mcp",
+            "skyfire": "https://mcp.skyfire.xyz/mcp"
         },
         "endpoints": {
             "initialize": "/initialize (POST - creates first session)",
@@ -484,8 +641,6 @@ def initialize():
         
         # Wait for initialization to complete if in progress
         elif initialization_status["initializing"]:
-            # In a real application, you might want to implement proper waiting
-            # For now, return that initialization is in progress
             return jsonify({
                 "status": "initializing",
                 "message": "Initialization is in progress. Please try again in a moment.",
@@ -503,28 +658,29 @@ def initialize():
         # Generate a new session ID
         session_id = generate_session_id()
         
-        # Create session agent immediately
+        # Create session swarm immediately - always create new, never reuse
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
-            session_agent = loop.run_until_complete(get_or_create_session_agent(session_id))
+            session_swarm = loop.run_until_complete(create_new_session_swarm(session_id))
             
             return jsonify({
                 "status": "success",
-                "message": "Session initialized successfully",
+                "message": "Session initialized successfully with Swarm architecture",
                 "session_id": session_id,
                 "initialization_status": initialization_status,
                 "session_info": {
                     "created_at": datetime.now().isoformat(),
-                    "agent_ready": True
+                    "swarm_ready": True,
+                    "agents": ["planning_agent", "dappier_agent", "skyfire_agent"]
                 }
             })
             
         except Exception as e:
             return jsonify({
                 "status": "error",
-                "message": f"Failed to create session agent: {str(e)}",
+                "message": f"Failed to create session swarm: {str(e)}",
                 "initialization_status": initialization_status
             }), 500
             
@@ -547,8 +703,30 @@ def get_status():
     """Get current initialization status"""
     return jsonify({
         "status": "success",
-        "initialization_status": initialization_status
+        "initialization_status": initialization_status,
+        "swarm_architecture": {
+            "agents": [
+                {"name": "planning_agent", "role": "orchestrator and general assistance"},
+                {"name": "dappier_agent", "role": "real-time information"},
+                {"name": "skyfire_agent", "role": "network operations"}
+            ]
+        }
     })
+
+@app.route('/sessions/clear', methods=['POST'])
+def clear_sessions():
+    """Clear all cached sessions to force recreation with updated configuration"""
+    try:
+        clear_session_cache()
+        return jsonify({
+            "status": "success",
+            "message": "All sessions cleared successfully. New sessions will use updated configuration."
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to clear sessions: {str(e)}"
+        }), 500
 
 @app.route('/sessions/new', methods=['POST'])
 def create_new_session():
@@ -567,27 +745,28 @@ def create_new_session():
         # Generate a new session ID
         session_id = generate_session_id()
         
-        # Create session agent
+        # Create session swarm
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
-            session_agent = loop.run_until_complete(get_or_create_session_agent(session_id))
+            session_swarm = loop.run_until_complete(get_or_create_session_swarm(session_id))
             
             return jsonify({
                 "status": "success",
-                "message": "New session created successfully",
+                "message": "New session created successfully with Swarm",
                 "session_id": session_id,
                 "session_info": {
                     "created_at": datetime.now().isoformat(),
-                    "agent_ready": True
+                    "swarm_ready": True,
+                    "agents": ["planning_agent", "dappier_agent", "skyfire_agent"]
                 }
             })
             
         except Exception as e:
             return jsonify({
                 "status": "error",
-                "message": f"Failed to create session agent: {str(e)}"
+                "message": f"Failed to create session swarm: {str(e)}"
             }), 500
             
         finally:
@@ -602,7 +781,7 @@ def create_new_session():
 @app.route('/sessions', methods=['GET'])
 def get_sessions():
     """Get information about active sessions"""
-    global session_agents, session_metadata
+    global session_swarms, session_metadata
     
     # Clean up expired sessions before reporting
     cleanup_expired_sessions()
@@ -614,12 +793,12 @@ def get_sessions():
             "created_at": datetime.fromtimestamp(metadata['created_at']).isoformat(),
             "last_activity": datetime.fromtimestamp(metadata['last_activity']).isoformat(),
             "message_count": metadata['message_count'],
-            "has_agent": session_id in session_agents
+            "has_swarm": session_id in session_swarms
         })
     
     return jsonify({
         "status": "success",
-        "active_sessions": len(session_agents),
+        "active_sessions": len(session_swarms),
         "max_sessions": SESSION_CONFIG['max_sessions'],
         "session_timeout": SESSION_CONFIG['session_timeout'],
         "sessions": sessions_info
@@ -628,10 +807,10 @@ def get_sessions():
 @app.route('/sessions/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
     """Delete a specific session"""
-    global session_agents, session_metadata
+    global session_swarms, session_metadata
     
-    if session_id in session_agents:
-        del session_agents[session_id]
+    if session_id in session_swarms:
+        del session_swarms[session_id]
     
     if session_id in session_metadata:
         del session_metadata[session_id]
@@ -649,12 +828,12 @@ def cleanup_sessions():
     return jsonify({
         "status": "success",
         "message": f"Cleaned up {cleaned_count} expired sessions",
-        "active_sessions": len(session_agents)
+        "active_sessions": len(session_swarms)
     })
 
 @app.route('/chat', methods=['POST'])
 def chat_completion():
-    """Chat completion endpoint that uses AutoGen with streaming and session management"""
+    """Chat completion endpoint that uses AutoGen Swarm with streaming and session management"""
     try:
         # Check if MCP connections are initialized
         if not initialization_status["initialized"]:
@@ -688,7 +867,7 @@ def chat_completion():
         # Extract conversation history from request (optional)
         messages_history = data.get('messages', [])
         
-        # Use streaming with session-based agent
+        # Use streaming with session-based swarm
         return Response(
             stream_with_context(generate_streaming_response(message, messages_history, session_id)),
             mimetype='text/plain',
@@ -704,21 +883,21 @@ def chat_completion():
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 def generate_streaming_response(message, messages_history=None, session_id=None):
-    """Generate streaming response using session-specific AutoGen agent with conversation history"""
+    """Generate streaming response using session-specific AutoGen Swarm with conversation history"""
     try:
         # Session ID is required
         if not session_id:
             yield f"data: {json.dumps({'error': 'Session ID is required', 'type': 'error'})}\n\n"
             return
         
-        # Get session-specific agent
+        # Get session-specific swarm
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
-            session_agent = loop.run_until_complete(get_or_create_session_agent(session_id))
+            session_swarm = loop.run_until_complete(get_or_create_session_swarm(session_id))
         except Exception as e:
-            yield f"data: {json.dumps({'error': f'Failed to get session agent: {str(e)}', 'type': 'error'})}\n\n"
+            yield f"data: {json.dumps({'error': f'Failed to get session swarm: {str(e)}', 'type': 'error'})}\n\n"
             return
         finally:
             loop.close()
@@ -733,27 +912,35 @@ def generate_streaming_response(message, messages_history=None, session_id=None)
         try:
             # Define async function to stream messages
             async def stream_messages():
-                # Use the session-specific agent
-                async for chunk in session_agent.run_stream(task=conversation_context):
+                # Use the session-specific swarm
+                async for chunk in session_swarm.run_stream(task=conversation_context):
+                    # Handle HandoffMessage - inform UI about agent handoffs
+                    if hasattr(chunk, 'type') and chunk.type == 'HandoffMessage':
+                        if hasattr(chunk, 'source') and hasattr(chunk, 'target'):
+                            yield f"data: {json.dumps({'type': 'handoff', 'from': chunk.source, 'to': chunk.target, 'content': getattr(chunk, 'content', '')})}\n\n"
+                    
                     # Handle tool call requests - inform UI which tool is being called
-                    if hasattr(chunk, 'type') and chunk.type == 'ToolCallRequestEvent':
+                    elif hasattr(chunk, 'type') and chunk.type == 'ToolCallRequestEvent':
                         if hasattr(chunk, 'content'):
                             # Iterate over all items in chunk.content
                             for item in _iter_items(chunk.content):
                                 try:
                                     tool_name, tool_args = _extract_name_and_args(item)
                                     if tool_name:
-                                        display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
-                                        payload = {
-                                            'tool_name': tool_name,
-                                            'tool_display_name': display_name,
-                                            'type': 'tool_call',
-                                            'status': 'calling'
-                                        }
-                                        # Include arguments when available
-                                        if tool_args is not None:
-                                            payload['arguments'] = tool_args
-                                        yield f"data: {json.dumps(payload)}\n\n"
+                                        # Skip handoff tools (transfer_to_X)
+                                        if not tool_name.startswith('transfer_to_'):
+                                            display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                            payload = {
+                                                'tool_name': tool_name,
+                                                'tool_display_name': display_name,
+                                                'type': 'tool_call',
+                                                'status': 'calling',
+                                                'agent': getattr(chunk, 'source', 'unknown')
+                                            }
+                                            # Include arguments when available
+                                            if tool_args is not None:
+                                                payload['arguments'] = tool_args
+                                            yield f"data: {json.dumps(payload)}\n\n"
                                 except Exception as e:
                                     pass
                     
@@ -763,45 +950,64 @@ def generate_streaming_response(message, messages_history=None, session_id=None)
                             # Iterate over all items in chunk.content
                             for item in _iter_items(chunk.content):
                                 try:
-                                    tool_name, tool_args = _extract_name_and_args(item)
-                                    if tool_name:
+                                    # Extract tool name from FunctionExecutionResult
+                                    tool_name = None
+                                    
+                                    # Check if this is a FunctionExecutionResult with a name attribute
+                                    if hasattr(item, 'name') and hasattr(item, 'call_id'):
+                                        tool_name = item.name
+                                    else:
+                                        # Fallback to the original extraction method
+                                        tool_name, tool_args = _extract_name_and_args(item)
+                                    
+                                    # Send completion status for actual tools (not handoffs)
+                                    if tool_name and not tool_name.startswith('transfer_to_'):
                                         display_name = TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+                                        
+                                        # Extract tool output/result
+                                        tool_output = None
+                                        if hasattr(item, 'content'):
+                                            tool_output = item.content
+                                        elif hasattr(item, 'result'):
+                                            tool_output = item.result
+                                        
                                         payload = {
                                             'tool_name': tool_name,
                                             'tool_display_name': display_name,
                                             'type': 'tool_call',
-                                            'status': 'completed'
+                                            'status': 'completed',
+                                            'agent': getattr(chunk, 'source', 'unknown'),
+                                            'output': tool_output,
                                         }
+                                        # Include arguments when available
+                                        if tool_args is not None:
+                                            payload['arguments'] = tool_args
                                         yield f"data: {json.dumps(payload)}\n\n"
                                 except Exception as e:
+                                    print(f"Error processing tool execution event: {e}")
                                     pass
                     
                     # Handle ModelClientStreamingChunkEvent for token-level streaming
                     elif hasattr(chunk, 'type') and chunk.type == 'ModelClientStreamingChunkEvent':
                         if hasattr(chunk, 'content') and chunk.content:
-                            yield f"data: {json.dumps({'content': chunk.content, 'type': 'token'})}\n\n"
+                            agent_source = getattr(chunk, 'source', 'unknown')
+                            yield f"data: {json.dumps({'content': chunk.content, 'type': 'token', 'agent': agent_source})}\n\n"
                     
                     # Handle TextMessage (complete messages)
                     elif hasattr(chunk, 'type') and chunk.type == 'TextMessage':
-                        if hasattr(chunk, 'source') and chunk.source == 'chat_assistant':
+                        if hasattr(chunk, 'source'):
+                            # Get the agent source
+                            agent_source = chunk.source
                             if hasattr(chunk, 'content') and chunk.content:
-                                yield f"data: {json.dumps({'content': chunk.content, 'type': 'message'})}\n\n"
+                                # Don't stream handoff messages or internal tool messages
+                                if not chunk.content.startswith('Transferred to'):
+                                    yield f"data: {json.dumps({'content': chunk.content, 'type': 'message', 'agent': agent_source})}\n\n"
                     
                     # Handle TaskResult (final result)
                     elif hasattr(chunk, 'messages'):
-                        # This is the final TaskResult - we can ignore it since we already streamed the content
-                        pass
-                    
-                    # Handle ToolCallSummaryMessage - but extract only the processed response
-                    elif hasattr(chunk, 'type') and chunk.type == 'ToolCallSummaryMessage':
-                        # This might contain the LLM's processed response after using tools
-                        # Let's check if there's useful content here
-                        if hasattr(chunk, 'content') and chunk.content:
-                            pass
-                    
-                    # Handle any other chunk types
-                    else:
-                        pass
+                        # This is the final TaskResult - we can extract termination reason
+                        if hasattr(chunk, 'stop_reason'):
+                            yield f"data: {json.dumps({'type': 'completion', 'stop_reason': chunk.stop_reason})}\n\n"
             
             # Create async function to handle the streaming
             async def run_streaming():
@@ -828,6 +1034,7 @@ def generate_streaming_response(message, messages_history=None, session_id=None)
 
 
 if __name__ == '__main__':
-    print("Starting Flask AutoGen API with Dappier & Skyfire MCP Integration")
+    print("Starting Flask AutoGen Swarm API with Dappier & Skyfire MCP Integration")
     print("Server will be available at: http://localhost:5000")
+    print("Architecture: Swarm pattern with Planning, Dappier, Skyfire, and General agents")
     app.run(host='0.0.0.0', port=5000, debug=True)
