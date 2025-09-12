@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify
 from services.mcp_service import initialize_mcp_connections, get_initialization_status, clear_tool_cache
 from services.session_service import create_new_session_swarm
-from utils.helpers import generate_session_id
+from utils.helpers import generate_session_id, filter_initialization_status_for_client
 
 init_bp = Blueprint('initialization', __name__)
 
@@ -45,7 +45,7 @@ def initialize():
                     return jsonify({
                         "status": "error",
                         "message": "Failed to initialize MCP connections",
-                        "initialization_status": get_initialization_status()
+                        "initialization_status": filter_initialization_status_for_client(get_initialization_status())
                     }), 500
                     
             finally:
@@ -56,7 +56,7 @@ def initialize():
             return jsonify({
                 "status": "initializing",
                 "message": "Initialization is in progress. Please try again in a moment.",
-                "initialization_status": initialization_status
+                "initialization_status": filter_initialization_status_for_client(initialization_status)
             }), 202
         
         # Check if initialization was successful
@@ -64,7 +64,7 @@ def initialize():
             return jsonify({
                 "status": "error",
                 "message": "System initialization failed",
-                "initialization_status": initialization_status
+                "initialization_status": filter_initialization_status_for_client(initialization_status)
             }), 500
         
         # Generate a new session ID
@@ -81,7 +81,7 @@ def initialize():
                 "status": "success",
                 "message": "Session initialized successfully with Swarm architecture",
                 "session_id": session_id,
-                "initialization_status": get_initialization_status(),
+                "initialization_status": filter_initialization_status_for_client(get_initialization_status()),
                 "session_info": {
                     "created_at": datetime.now().isoformat(),
                     "swarm_ready": True,
@@ -93,7 +93,7 @@ def initialize():
             return jsonify({
                 "status": "error",
                 "message": f"Failed to create session swarm: {str(e)}",
-                "initialization_status": get_initialization_status()
+                "initialization_status": filter_initialization_status_for_client(get_initialization_status())
             }), 500
             
         finally:
@@ -111,5 +111,5 @@ def initialize():
         return jsonify({
             "status": "error",
             "message": f"Initialization failed: {str(e)}",
-            "initialization_status": init_status
+            "initialization_status": filter_initialization_status_for_client(init_status)
         }), 500
