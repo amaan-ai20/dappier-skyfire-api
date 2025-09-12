@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify
 from services.mcp_service import get_initialization_status
 from services.session_service import get_session_info
 from config.settings import SESSION_CONFIG, MCP_SERVERS
+from utils.helpers import filter_initialization_status_for_client
 
 health_bp = Blueprint('health', __name__)
 
@@ -48,7 +49,7 @@ def get_status():
     
     return jsonify({
         "status": "success",
-        "initialization_status": initialization_status,
+        "initialization_status": filter_initialization_status_for_client(initialization_status),
         "swarm_architecture": {
             "agents": [
                 {"name": "planning_agent", "role": "orchestrator and general assistance"},

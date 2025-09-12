@@ -13,7 +13,7 @@ from services.session_service import (
     cleanup_expired_sessions,
     clear_session_cache
 )
-from utils.helpers import generate_session_id
+from utils.helpers import generate_session_id, filter_initialization_status_for_client
 
 sessions_bp = Blueprint('sessions', __name__)
 
@@ -44,7 +44,7 @@ def create_new_session():
         return jsonify({
             "status": "error",
             "message": "System not initialized. Please call /initialize endpoint first.",
-            "initialization_status": initialization_status
+            "initialization_status": filter_initialization_status_for_client(initialization_status)
         }), 400
     
     try:

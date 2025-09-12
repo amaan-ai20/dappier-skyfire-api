@@ -6,7 +6,7 @@ import json
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from services.mcp_service import get_initialization_status
 from services.session_service import get_or_create_session_swarm
-from utils.helpers import build_conversation_context, _iter_items, _extract_name_and_args
+from utils.helpers import build_conversation_context, _iter_items, _extract_name_and_args, filter_initialization_status_for_client
 from config.settings import TOOL_DISPLAY_NAMES
 
 chat_bp = Blueprint('chat', __name__)
@@ -21,7 +21,7 @@ def chat_completion():
         if not initialization_status["initialized"]:
             return jsonify({
                 "error": "System not initialized. Please call /initialize endpoint first.",
-                "initialization_status": initialization_status
+                "initialization_status": filter_initialization_status_for_client(initialization_status)
             }), 400
         
         # Get the request data
