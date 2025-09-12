@@ -33,13 +33,13 @@ args = "Flask API"
 name = "Flask API"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python app.py"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "gunicorn --bind=0.0.0.0:5000 --workers=2 app:app"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
