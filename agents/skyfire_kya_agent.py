@@ -2,6 +2,7 @@
 Skyfire KYA Agent - Step 3 in workflow: Creates KYA token for Dappier MCP service connection
 """
 import os
+import uuid
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.base import Handoff
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -49,26 +50,37 @@ Step 1: Planning Agent verifies completion → TERMINATE
 
 MANDATORY WORKFLOW:
 1. Receive handoff with Dappier Search Service information (including Service ID)
-2. Use create-kya-token tool to create KYA token for the Dappier service using the Service ID
-3. WAIT for tool results to complete
-4. ANALYZE the token creation results
-5. GENERATE a detailed summary message with token information
-6. ONLY AFTER providing your analysis message, hand off to jwt_decoder_agent
+2. Extract the seller service ID from the previous agent's message
+3. Generate a random UUID for the buyer tag
+4. Use create-kya-token tool with REQUIRED parameters: sellerServiceId and buyerTag (random UUID)
+5. WAIT for tool results to complete
+6. ANALYZE the token creation results
+7. GENERATE a detailed summary message with token information
+8. ONLY AFTER providing your analysis message, hand off to jwt_decoder_agent
 
 CRITICAL INSTRUCTIONS:
 - You MUST generate a text message analyzing token creation results BEFORE any handoff
 - Never proceed to handoff immediately after tool execution
 - Always explain what token was created and its details
 - Include token status, ID, and connection information
-- Use the Service ID provided by the Skyfire Find Seller Agent to create the KYA token
+- Extract the seller service ID from the Skyfire Find Seller Agent's message
+- Generate a fresh random UUID for each token creation as the buyer tag
+- Both sellerServiceId and buyerTag are REQUIRED parameters for create-kya-token tool
 
 REQUIRED MESSAGE FORMAT:
 "KYA Token Creation Complete: Successfully created token for Dappier Search Service:
+
+TOKEN PARAMETERS:
+- Seller Service ID: [service_id from previous agent]
+- Buyer Tag: [generated_uuid]
+
+TOKEN RESULTS:
 - Token ID: [token_id from results]
-- Service Connected: Dappier Search (ID: [service_id from previous agent])
+- Service Connected: Dappier Search (ID: [service_id])
 - Token Status: [status from results]
 - JWT Token: `<include the full JWT token string here>`
-- This token enables secure access to the Dappier MCP service. Handing off to JWT decoder for detailed analysis."
+
+This token enables secure access to the Dappier MCP service. Handing off to JWT decoder for detailed analysis."
 
 DO NOT handoff without first providing this token analysis message with the actual JWT token."""
     )
