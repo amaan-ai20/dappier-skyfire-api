@@ -89,15 +89,3 @@ def build_conversation_context(current_message, messages_history=None):
     context_parts.append("\nPlease respond to the current user message, taking into account the conversation history above.")
     
     return "\n".join(context_parts)
-
-
-def filter_initialization_status_for_client(full_status):
-    """Filter initialization status to only include Skyfire information for client response"""
-    return {
-        "initialized": full_status["initialized"],
-        "initializing": full_status["initializing"],
-        "error": full_status["error"],
-        "skyfire": full_status["skyfire"],
-        "total_tools": full_status["skyfire"]["count"] if full_status["skyfire"]["status"] == "connected" else 0,
-        "initialized_at": full_status["initialized_at"]
-    }
