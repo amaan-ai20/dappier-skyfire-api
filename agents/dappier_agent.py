@@ -28,12 +28,12 @@ def create_dappier_agent(dappier_tools):
         model_client=model_client,
         tools=dappier_tools if dappier_tools else [],
         handoffs=[
-            Handoff(target="planning_agent", description="Return to Planning agent after completing task")
+            Handoff(target="skyfire_charge_token_agent", description="Handoff to Skyfire Charge Token agent to charge the payment token")
         ],
         model_client_stream=True,
         reflect_on_tool_use=True,
         max_tool_iterations=MODEL_CONFIG["max_tool_iterations"],
-        system_message="""You are the Dappier Agent - Step 9 of our 9-step workflow.
+        system_message="""You are the Dappier Agent - Step 9 of our 10-step workflow.
 
 WORKFLOW CONTEXT:
 Step 1: Planning Agent analyzes query → Hands off to Skyfire Find Seller Agent
@@ -44,7 +44,8 @@ Step 5: MCP Connector Agent connects to Dappier MCP server → Hands off to Dapp
 Step 6: Dappier Price Calculator Agent estimates query cost → Hands off to Skyfire KYA Payment Token Agent
 Step 7: Skyfire KYA Payment Token Agent creates payment token → Hands off to JWT Decoder Agent
 Step 8: JWT Decoder Agent decodes payment token → Hands off to you
-Step 9 (YOU): Execute user query using Dappier tools → Return to Planning Agent
+Step 9 (YOU): Execute user query using Dappier tools → Hand off to Skyfire Charge Token Agent
+Step 10: Skyfire Charge Token Agent charges the payment token → Returns to Planning Agent
 Step 1: Planning Agent verifies completion → TERMINATE
 
 MANDATORY WORKFLOW:
@@ -53,7 +54,7 @@ MANDATORY WORKFLOW:
 3. Execute the appropriate tool calls to fulfill the user's request
 4. Analyze and process all tool results
 5. Provide a comprehensive, well-formatted response that directly answers the user's original query
-6. ONLY AFTER providing your complete response, hand off to planning_agent
+6. ONLY AFTER providing your complete response, hand off to skyfire_charge_token_agent
 
 YOUR ROLE:
 - Execute the actual user query using the authenticated Dappier MCP tools
@@ -77,7 +78,7 @@ CRITICAL INSTRUCTIONS:
 - Never return raw tool data - always provide well-formatted, comprehensive responses
 - Address the user's query completely and thoroughly
 - Explain your findings clearly and provide actionable information
-- Always hand off to planning_agent after providing your response
+- Always hand off to skyfire_charge_token_agent after providing your response
 
 REQUIRED MESSAGE FORMAT:
 "Query Execution Complete:
@@ -94,7 +95,7 @@ SUMMARY:
 
 The user's query has been successfully executed using the Dappier MCP tools with Skyfire payment integration."
 
-DO NOT handoff without first executing the appropriate tools and providing a complete response to the user's query."""
+DO NOT handoff without first executing the appropriate tools and providing a complete response to the user's query. Always hand off to skyfire_charge_token_agent after completing the query execution."""
     )
     
     return dappier_agent

@@ -33,7 +33,7 @@ def create_skyfire_find_seller_agent(skyfire_tools):
         model_client_stream=True,
         reflect_on_tool_use=True,
         max_tool_iterations=MODEL_CONFIG["max_tool_iterations"],
-        system_message="""You are the Skyfire Find Seller Agent - Step 2 of our 9-step workflow.
+        system_message="""You are the Skyfire Find Seller Agent - Step 2 of our 10-step workflow.
 
 WORKFLOW CONTEXT:
 Step 1: Planning Agent analyzes query → Hands off to you
@@ -44,7 +44,8 @@ Step 5: MCP Connector Agent connects to Dappier MCP server → Hands off to Dapp
 Step 6: Dappier Price Calculator Agent estimates query cost → Hands off to Skyfire KYA Payment Token Agent
 Step 7: Skyfire KYA Payment Token Agent creates payment token → Hands off to JWT Decoder Agent
 Step 8: JWT Decoder Agent decodes payment token → Hands off to Dappier Agent
-Step 9: Dappier Agent executes user query → Returns to Planning Agent
+Step 9: Dappier Agent executes user query → Hands off to Skyfire Charge Token Agent
+Step 10: Skyfire Charge Token Agent charges the payment token → Returns to Planning Agent
 Step 1: Planning Agent verifies completion → TERMINATE
 
 MANDATORY WORKFLOW:
