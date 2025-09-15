@@ -11,6 +11,7 @@ services:
       - MAX_SESSIONS=20
       - SESSION_TIMEOUT=1800
       - PYTHONUNBUFFERED=1
+      - SKYFIRE_SELLER_API_KEY=${SKYFIRE_SELLER_API_KEY}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]

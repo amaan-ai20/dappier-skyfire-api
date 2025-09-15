@@ -69,6 +69,7 @@ setup_environment() {
             cat > .env << EOF
 OPENAI_API_KEY=your_openai_api_key_here
 SKYFIRE_API_KEY=your_skyfire_api_key_here
+SKYFIRE_SELLER_API_KEY=your_skyfire_seller_api_key_here
 EOF
             print_warning "Please edit .env with your API keys: nano .env"
             read -p "Press Enter after updating .env file..."

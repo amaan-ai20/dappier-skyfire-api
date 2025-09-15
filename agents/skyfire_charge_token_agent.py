@@ -22,11 +22,11 @@ def charge_token_tool(token: str, charge_amount: str) -> str:
         str: JSON response from the charge API
     """
     try:
-        # Get Skyfire API key from environment
-        skyfire_api_key = os.getenv('SKYFIRE_API_KEY')
+        # Get Skyfire Seller API key from environment
+        skyfire_api_key = os.getenv('SKYFIRE_SELLER_API_KEY')
         if not skyfire_api_key:
             return json.dumps({
-                "error": "SKYFIRE_API_KEY environment variable is required",
+                "error": "SKYFIRE_SELLER_API_KEY environment variable is required",
                 "success": False
             })
         
