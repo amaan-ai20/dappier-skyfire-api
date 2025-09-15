@@ -1,14 +1,12 @@
-version: "3.8"
-
 services:
   dappier-skyfire-api:
     build: .
     container_name: dappier-skyfire-demo
     ports:
       - "5000:5000"
+    env_file:
+      - .env
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SKYFIRE_API_KEY=${SKYFIRE_API_KEY}
       - FLASK_ENV=production
       - MAX_SESSIONS=20
       - SESSION_TIMEOUT=1800
