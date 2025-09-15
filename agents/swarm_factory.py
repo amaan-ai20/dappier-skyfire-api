@@ -2,7 +2,7 @@
 Swarm Factory - Creates and configures the 10-step workflow swarm with 9 agents
 """
 from autogen_agentchat.teams import Swarm
-from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
 from agents.planning_agent import create_planning_agent
 from agents.skyfire_find_seller_agent import create_skyfire_find_seller_agent
 from agents.skyfire_kya_agent import create_skyfire_kya_agent

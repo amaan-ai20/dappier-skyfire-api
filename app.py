@@ -19,7 +19,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Enable CORS for all routes and origins
-CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
+CORS(app, origins="*", methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
 
 # Register blueprints
 app.register_blueprint(health_bp)
