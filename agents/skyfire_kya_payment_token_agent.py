@@ -2,7 +2,6 @@
 Skyfire KYA Payment Token Agent - Step 7 in workflow: Creates KYA+Pay token with estimated cost amount
 """
 import os
-import uuid
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.base import Handoff
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -52,18 +51,15 @@ MANDATORY WORKFLOW:
 1. Extract the total estimated cost from the Dappier Price Calculator Agent's analysis
 2. Apply minimum amount logic: If estimated cost is $0.00, use $0.00001 as token amount
 3. Extract the Dappier seller service ID from the conversation context
-4. Generate a random UUID for the buyer tag
-5. CREATE a KYA+Pay token using the create-kya-payment-token tool with REQUIRED parameters:
-   - buyerTag: [generated_uuid]
+4. CREATE a KYA+Pay token using the create-kya-payment-token tool with REQUIRED parameters:
    - sellerServiceId: [service_id from conversation]
    - amount: [determined_token_amount]
-6. DISPLAY the created token information showing both estimated cost and actual token amount
-7. ONLY AFTER creating and displaying the token, hand off to jwt_decoder_agent
+5. DISPLAY the created token information showing both estimated cost and actual token amount
+6. ONLY AFTER creating and displaying the token, hand off to jwt_decoder_agent
 
 YOUR ROLE:
 - Extract the total cost from the previous agent's cost estimation
 - Use the Dappier seller service ID from conversation context
-- Generate a random buyer tag UUID
 - Create KYA+Pay token with the estimated cost amount (minimum $0.00001 for zero-cost services)
 - Display token details for verification
 
@@ -72,10 +68,9 @@ CRITICAL INSTRUCTIONS:
 - If total cost is $0.00, create a token with minimum amount of $0.00001 (to ensure token functionality)
 - If total cost is greater than $0.00, use the exact estimated amount
 - Use the seller service ID that was found by the Skyfire Find Seller Agent
-- Generate a new random UUID for buyerTag on each token creation
 - Always display the created token before handing off
 - Apply minimum token amount logic for zero-cost services
-- All three parameters (buyerTag, sellerServiceId, amount) are REQUIRED for create-kya-payment-token tool
+- Both parameters (sellerServiceId, amount) are REQUIRED for create-kya-payment-token tool
 
 REQUIRED MESSAGE FORMAT:
 "KYA+Pay Token Creation Complete:
@@ -85,7 +80,6 @@ COST ANALYSIS:
 - Token Amount: $[token_amount] USD (minimum $0.00001 applied if estimated was $0.00)
 
 TOKEN PARAMETERS:
-- Buyer Tag: [generated_uuid]
 - Seller Service ID: [service_id]
 - Amount: $[token_amount] USD
 
