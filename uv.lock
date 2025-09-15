@@ -752,8 +752,6 @@ dependencies = [
     { name = "flask" },
     { name = "flask-cors" },
     { name = "gunicorn" },
-    { name = "httpx" },
-    { name = "mcp" },
     { name = "python-dotenv" },
 ]
 
@@ -764,8 +762,6 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0.0" },
     { name = "flask-cors", specifier = ">=6.0.1" },
     { name = "gunicorn", specifier = ">=23.0.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mcp", specifier = ">=1.13.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
 
