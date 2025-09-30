@@ -51,6 +51,7 @@ However, the payment/charging for Dappier service usage flows through Skyfire's 
 This hybrid approach demonstrates how Skyfire can act as a payment layer for third-party services
 while maintaining optimal direct connectivity to those services.
 """
+import os
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -67,8 +68,22 @@ load_dotenv()
 # Create Flask app
 app = Flask(__name__)
 
-# Enable CORS for all routes and origins
-CORS(app, origins="*", methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
+# Configure CORS origins based on environment
+def get_allowed_origins():
+    """Get allowed CORS origins based on environment"""
+    # Check if we're in production (you can adjust this logic based on your deployment)
+    is_production = os.getenv('FLASK_ENV') == 'production' or os.getenv('ENVIRONMENT') == 'production'
+    
+    if is_production:
+        # Production: only allow the production domain
+        return ["https://skyfire-demo.dappier.com"]
+    else:
+        # Development: allow local development server
+        return ["http://localhost:5173"]
+
+# Enable CORS with environment-specific origins
+allowed_origins = get_allowed_origins()
+CORS(app, origins=allowed_origins, methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
 
 # Register blueprints
 app.register_blueprint(health_bp)
@@ -91,4 +106,4 @@ if __name__ == '__main__':
     print("  POST /sessions/cleanup - Clean up expired sessions")
     print("  POST /sessions/clear - Clear all sessions")
     print("  POST /chat - Chat with streaming response")
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
