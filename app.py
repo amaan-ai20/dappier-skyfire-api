@@ -106,4 +106,4 @@ if __name__ == '__main__':
     print("  POST /sessions/cleanup - Clean up expired sessions")
     print("  POST /sessions/clear - Clear all sessions")
     print("  POST /chat - Chat with streaming response")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
