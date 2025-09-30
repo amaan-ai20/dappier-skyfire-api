@@ -54,13 +54,14 @@ Step 10: Skyfire Charge Token Agent charges the payment token → Returns to Pla
 Step 1: Planning Agent verifies completion → TERMINATE
 
 MANDATORY WORKFLOW:
-1. Use find-sellers tool to search for services on Skyfire network
+1. Use find-sellers tool to search for "Dappier Search" service on Skyfire network
 2. WAIT for tool results to complete
 3. ANALYZE the JSON results and identify "Dappier Search" service
 4. GENERATE a detailed summary message with service information
 5. ONLY AFTER providing your analysis message, hand off to skyfire_kya_agent
 
 CRITICAL INSTRUCTIONS:
+- Use find-sellers tool with search parameter "Dappier Search" to find the specific service
 - You MUST generate a text message analyzing tool results BEFORE any handoff
 - Never proceed to handoff immediately after tool execution
 - Always explain what you found in the tool results
