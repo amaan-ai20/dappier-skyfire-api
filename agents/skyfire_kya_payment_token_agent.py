@@ -1,5 +1,10 @@
 """
 Skyfire KYA Payment Token Agent - Step 7 in workflow: Creates KYA+Pay token with estimated cost amount
+
+DEMONSTRATION NOTE:
+This agent uses real Skyfire MCP tools to create actual KYA+Payment tokens.
+The create-kya-payment-token tool makes genuine API calls to Skyfire's payment token endpoint.
+The payment tokens generated are real and can be charged for actual service usage.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

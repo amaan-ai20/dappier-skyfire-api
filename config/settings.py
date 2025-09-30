@@ -1,6 +1,22 @@
 """
 Configuration settings for the Dappier-Skyfire API
+
+DEMONSTRATION NOTE:
+This configuration file contains real settings for both Skyfire and Dappier MCP servers.
+The MCP server URLs are actual endpoints that the application connects to:
+- Dappier MCP Server: Real connection using DAPPIER_API_KEY for authentication
+- Skyfire MCP Server: Real connection to Skyfire's production MCP endpoint
+
+All tool configurations and session management settings are production-ready.
+The only mocked component is the pricing data returned by one tool in the MCP Connector Agent.
+
+IMPORTANT DEMONSTRATION DETAIL:
+The Dappier MCP server connection uses Dappier's API key directly (not Skyfire tokens),
+but the payment/charging for Dappier service usage flows through Skyfire's payment infrastructure.
+This hybrid approach demonstrates how Skyfire can act as a payment layer for third-party services
+while maintaining direct service connectivity for optimal performance.
 """
+import os
 
 # Session management configuration
 SESSION_CONFIG = {
@@ -33,7 +49,7 @@ TOOL_DISPLAY_NAMES = {
 # MCP Server URLs
 MCP_SERVERS = {
     "dappier": {
-        "url": "https://mcp.dappier.com/mcp?apiKey=ak_01k194ztkcey3aq7b8k415k0zp"
+        "url": f"https://mcp.dappier.com/mcp?apiKey={os.getenv('DAPPIER_API_KEY')}"
     },
     "skyfire": {
         "url": "https://mcp.skyfire.xyz/mcp"

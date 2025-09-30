@@ -1,6 +1,55 @@
 """
 Flask AutoGen Swarm API with Dappier & Skyfire MCP Integration
 Modular architecture with separated concerns
+
+SKYFIRE-DAPPIER DEMO APPLICATION
+================================
+
+This application demonstrates a sophisticated integration between Skyfire and Dappier services
+through a 10-step multi-agent workflow using Microsoft AutoGen's Swarm pattern.
+
+DEMONSTRATION COMPONENTS:
+========================
+
+REAL FUNCTIONALITY:
+- Skyfire MCP Server: Real connections, token creation, and payment processing
+- Dappier MCP Server: Real connections and tool execution for data retrieval
+- JWT Token System: Real token generation, decoding, and authentication
+- Payment Processing: Actual token charging through Skyfire's API
+- Multi-Agent Orchestration: Production-ready agent coordination
+
+MOCKED FOR DEMONSTRATION:
+- Dappier Pricing Data: Static pricing JSON to ensure consistent demo experience
+- Service Discovery: Dappier Search Service is part of demo setup
+
+WORKFLOW OVERVIEW:
+=================
+1. Planning Agent: Routes queries and orchestrates workflow
+2. Skyfire Find Seller: Discovers Dappier services on Skyfire network
+3. Skyfire KYA Agent: Creates authentication tokens
+4. JWT Decoder: Analyzes tokens (used twice in workflow)
+5. MCP Connector: Establishes Dappier connection + retrieves pricing
+6. Price Calculator: Estimates costs using real pricing logic
+7. Payment Token Agent: Creates payment tokens with estimated amounts
+8. JWT Decoder: Analyzes payment tokens
+9. Dappier Agent: Executes queries using real Dappier tools
+10. Charge Token Agent: Processes payment through Skyfire
+
+KEY DEMONSTRATION POINTS:
+========================
+- Payment-enabled AI service integration
+- Cross-platform authentication and authorization
+- Real-time cost estimation and payment processing
+- Multi-agent coordination for complex workflows
+- Production-ready architecture with Docker deployment
+
+IMPORTANT DEMONSTRATION DETAIL:
+===============================
+While the demo UI visually shows Skyfire tokens being used to connect to Dappier's MCP server,
+the actual implementation uses Dappier's API key directly for the MCP connection.
+However, the payment/charging for Dappier service usage flows through Skyfire's infrastructure.
+This hybrid approach demonstrates how Skyfire can act as a payment layer for third-party services
+while maintaining optimal direct connectivity to those services.
 """
 from flask import Flask
 from flask_cors import CORS

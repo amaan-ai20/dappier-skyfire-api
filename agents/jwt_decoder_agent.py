@@ -1,5 +1,11 @@
 """
 JWT Decoder Agent - Step 4 in workflow: Decodes Skyfire KYA token and returns analysis
+
+DEMONSTRATION NOTE:
+This agent provides real JWT token decoding functionality for analysis purposes.
+The decode_jwt_tool performs actual base64 decoding of JWT headers and payloads.
+However, it does NOT perform signature verification - it's for demonstration and analysis only.
+In production, proper JWT signature verification should be implemented.
 """
 import os
 import json

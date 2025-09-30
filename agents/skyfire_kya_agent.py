@@ -1,5 +1,10 @@
 """
 Skyfire KYA Agent - Step 3 in workflow: Creates KYA token for Dappier MCP service connection
+
+DEMONSTRATION NOTE:
+This agent uses real Skyfire MCP tools to create actual KYA (Know Your Agent) tokens.
+The create-kya-token tool makes genuine API calls to Skyfire's token creation endpoint.
+The JWT tokens generated are real and functional for authentication purposes.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

@@ -1,5 +1,19 @@
 """
 MCP (Model Context Protocol) service for managing connections to Dappier and Skyfire servers
+
+DEMONSTRATION OVERVIEW:
+This service manages connections to both Dappier and Skyfire MCP servers with different levels of functionality:
+
+REAL CONNECTIONS:
+- Dappier MCP Server: Makes actual connections to https://mcp.dappier.com/mcp
+- Skyfire MCP Server: Makes actual connections to https://mcp.skyfire.xyz/mcp
+- Both use real API keys and return functional tools for production use
+
+DEMONSTRATION SETUP:
+- The Dappier connection uses a real API key but the payment/charging is handled through Skyfire
+- This demonstrates how Skyfire can act as a payment layer for third-party services
+- Users pay through Skyfire tokens while accessing real Dappier data and tools
+- The integration showcases a complete payment-enabled AI service ecosystem
 """
 import os
 from datetime import datetime

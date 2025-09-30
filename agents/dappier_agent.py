@@ -1,5 +1,18 @@
 """
 Dappier Agent - Specialized in real-time information retrieval
+
+DEMONSTRATION NOTE:
+This agent uses REAL Dappier MCP tools to execute actual queries.
+The connection to Dappier's MCP server at https://mcp.dappier.com/mcp is genuine.
+All tool calls (real-time-search, news tools, financial data, etc.) are fully functional.
+Query execution and data retrieval are production-ready and not mocked.
+
+IMPORTANT DEMONSTRATION DETAIL:
+While the demo UI shows that this agent uses Skyfire tokens to access Dappier services,
+the actual MCP connection is established using Dappier's API key directly.
+However, the payment for service usage is processed through Skyfire's payment infrastructure.
+This demonstrates the integration pattern where Skyfire acts as the payment layer
+for third-party services while maintaining direct service connectivity.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

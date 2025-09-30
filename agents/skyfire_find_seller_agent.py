@@ -1,5 +1,10 @@
 """
 Skyfire Find Seller Agent - Step 2 in workflow: Finds Dappier Search Service and hands off to KYA Agent
+
+DEMONSTRATION NOTE:
+This agent uses real Skyfire MCP tools to discover services on the Skyfire network.
+The find-sellers tool makes actual API calls to Skyfire's service discovery endpoint.
+However, the specific "Dappier Search" service discovery is part of the demo setup.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

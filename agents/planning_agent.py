@@ -1,5 +1,11 @@
 """
 Planning Agent - The orchestrator that delegates to Skyfire and verifies task completion
+
+DEMONSTRATION NOTE:
+This agent serves as the main orchestrator and uses real decision-making logic.
+It can handle simple queries directly or delegate complex queries to the specialized workflow.
+The routing decisions and conversation management are fully functional.
+No mocking is involved in this agent's core functionality.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

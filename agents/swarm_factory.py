@@ -1,5 +1,19 @@
 """
 Swarm Factory - Creates and configures the 10-step workflow swarm with 9 agents
+
+DEMONSTRATION NOTE:
+This factory creates the complete 10-step workflow using Microsoft AutoGen's Swarm pattern.
+The swarm orchestrates 9 specialized agents in a sequential workflow that demonstrates
+payment-enabled AI service integration between Skyfire and Dappier.
+
+WORKFLOW ARCHITECTURE:
+- Real agent coordination and handoff logic
+- Production-ready termination conditions and message limits
+- Actual tool integration with both Skyfire and Dappier MCP servers
+- Functional error handling and workflow recovery
+
+The swarm itself is fully operational - the demonstration aspects are contained
+within individual agents (primarily the mocked pricing data in MCP Connector Agent).
 """
 from autogen_agentchat.teams import Swarm
 from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination

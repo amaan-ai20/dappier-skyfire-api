@@ -1,5 +1,10 @@
 """
 Skyfire Charge Token Agent - Step 10 in workflow: Charges the token after Dappier query execution
+
+DEMONSTRATION NOTE:
+This agent uses a real Skyfire API endpoint to charge payment tokens.
+The charge_token_tool makes actual HTTP requests to https://api.skyfire.xyz/api/v1/tokens/charge
+using the SKYFIRE_SELLER_API_KEY for authentication. The charging functionality is fully operational.
 """
 import os
 import json

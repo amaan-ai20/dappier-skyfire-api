@@ -2,6 +2,29 @@
 MCP Connector Agent - Step 5 in workflow
 - Connects to Dappier MCP server using JWT token to list available tools
 - MOCKS a second tool that validates (mcp_url, skyfire_pay_id) and returns your exact resources/pricing JSON
+
+DEMONSTRATION NOTE:
+This agent has TWO tools with different levels of mocking:
+
+1. connect_dappier_mcp_tool() - REAL MCP CONNECTION
+   - Makes actual connections to Dappier's MCP server at https://mcp.dappier.com/mcp
+   - Uses real JWT authentication via skyfire-pay-id header
+   - Retrieves actual available tools from Dappier's MCP server
+   - Connection and tool discovery are fully functional
+
+2. get_dappier_resources_pricing() - MOCKED PRICING DATA
+   - Validates inputs (URL format and JWT structure) but returns hardcoded pricing JSON
+   - The pricing data is static and represents typical Dappier tool costs
+   - In production, this would make a real API call to fetch current pricing
+   - Used for demonstration to show consistent pricing without API dependencies
+
+IMPORTANT DEMONSTRATION DETAIL:
+While the demo UI shows that Skyfire tokens are used to connect to Dappier's MCP server,
+the actual implementation uses Dappier's API key directly for the MCP connection.
+However, the payment/charging for Dappier service usage still flows through Skyfire tokens.
+This hybrid approach is for demonstration purposes to show both:
+- Real MCP connectivity (using Dappier's API key)
+- Real payment processing (using Skyfire's payment infrastructure)
 """
 
 import os
@@ -124,6 +147,11 @@ async def get_dappier_resources_pricing(mcp_url: str, skyfire_pay_id: str) -> st
     """
     MOCK tool: validates inputs (URL + JWT-like format) and returns the original
     Dappier resources & pricing JSON verbatim (no parsing/aggregation).
+    
+    DEMONSTRATION NOTE:
+    This is a MOCKED tool that returns hardcoded pricing data for demonstration purposes.
+    In a production environment, this would make a real API call to Dappier's pricing endpoint.
+    The static pricing data represents typical costs for Dappier tools and services.
     """
     try:
         # Validate JWT-ish format

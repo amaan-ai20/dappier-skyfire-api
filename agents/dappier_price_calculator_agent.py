@@ -1,5 +1,11 @@
 """
 Dappier Price Calculator Agent - Step 6 in workflow: Estimates cost of running user query on Dappier MCP server
+
+DEMONSTRATION NOTE:
+This agent performs real cost analysis using the pricing data from the MCP Connector Agent.
+The cost calculations are based on actual tool pricing and realistic usage estimates.
+However, the pricing data it uses comes from the mocked pricing tool in the MCP Connector Agent.
+The analysis logic and cost calculation algorithms are production-ready.
 """
 import os
 from autogen_agentchat.agents import AssistantAgent

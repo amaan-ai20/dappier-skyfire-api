@@ -1,5 +1,24 @@
 """
 Initialization endpoints for MCP connections and sessions
+
+DEMONSTRATION NOTE:
+This endpoint establishes real connections to both Skyfire and Dappier MCP servers.
+The initialization process is fully functional and includes:
+- Actual MCP server connections using real API keys
+- Real tool discovery and caching from both services
+- Production-ready error handling and status tracking
+
+The connections established here are genuine - the application communicates with:
+- Skyfire MCP Server: Real production endpoint for payment and authentication tools
+- Dappier MCP Server: Real production endpoint for data retrieval tools
+
+Only the pricing data returned by one specific tool is mocked for demonstration consistency.
+
+IMPORTANT DEMONSTRATION DETAIL:
+The Dappier MCP server connection is established using Dappier's API key directly,
+not through Skyfire tokens as shown in the demo UI. However, the payment/charging
+for Dappier service usage is processed through Skyfire's payment infrastructure.
+This demonstrates Skyfire's role as a payment layer for third-party services.
 """
 import asyncio
 from datetime import datetime
